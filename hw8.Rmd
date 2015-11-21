@@ -1,0 +1,67 @@
+---
+title: "hw8"
+output: html_document
+---
+
+Hokay. This homework is to identify five catagoies of motions given a bunch of gyros data. A lot of the data is NA, and another lot seems to be highly skewed factors. Some variables are obviously irrelevent like the names. I also used a small random sample(5% partition) of the training data to debug, since the training time was prohibitive. This also prevented me from doing a full learning curve. At .95 threshold, I trained on 5% of the data and got around 48% accuracy compared to 20% for random choice. Reducing the threshold to .9 doubled the training set size and raised accuracy to 82%, so I concluded my chosen method had low enough bias. The full training set gave about 97% accuracy so I think my first choice of variables and preprocess was pretty good. The training method used was the defualt options for random forest, with PCA option used as preprocessing. It settled on a tree with 2 variables per level.
+
+Here is the R source code I used for training and validation. It should output the accuracy on the validation set and the properties of the model. 
+
+```{r  warnings=FALSE}
+library(caret)
+library(randomForest)
+
+set.seed(1337)
+trainraw<- read.csv("pml-training.csv")
+
+# used this to adjust how much data I trained on, a poor mans learning curve.
+# also, to debug without it taking hours to run the script. In the final run set threshold to 0.
+threshold <- 0
+n <- length(trainraw[,1])
+trainset <- trainraw[ (runif(n) > threshold) ,]
+
+# I do some col. pruning before I partition the training set.
+# first, get rid of NA cols
+n <- length(trainset[1,])
+bc <- numeric(n)
+for ( i in 1:n ) {
+  bc[i] <- sum(is.na(trainset[,i]))
+}
+nabegone <- ( bc > ( .9 * length(trainset[,1]) ) )
+trimset <- trainset[,!nabegone]
+
+# remove first 7 cols, they look obviously irrelevent for fitting, like timestamps and names
+n <- length(trimset[1,])
+trim2 <- trimset[,8:n]
+ys <- trainset$classe
+
+# remove factors, since they appear highly skewed
+wat <- unname( unlist( lapply(trim2,class) ) )
+whonums <- ( wat == "factor" )
+factfree <- trim2[,!whonums]
+
+#now split the cleaned up data into 70/30 training-validation sets
+inTrain <- createDataPartition(trainset$classe, p = .7, list = FALSE)
+trainMod <- factfree[inTrain,]
+validMod <- factfree[-inTrain,]
+ytrain <- ys[inTrain]
+yvalid <- ys[-inTrain]
+
+# call train function, using the default random forest, and pca to reduce redundancy. Also random forest train was giving some odd warnings on mtry
+options( warn = -1 )
+choochoo <- train( x=trainMod,y=ytrain ,preProcess = "pca")
+
+# validate stuff
+validationPredRF <- predict(choochoo, validMod)
+
+# how many errors? 
+check <- ( as.character(ys[-inTrain]) == as.character(validationPredRF) )
+acc <- sum(check)/length(check)
+acc
+
+# SHOW ME WHAT YOU GOT (print summary)
+choochoo
+```
+
+If I had a few more days or a bigger computer it would have been nice to plot the relationship between threshold and acc(validation set accuracy). This should give the learning curve. As it was we got pretty lucky on the initial choice of veriables and preprocessing. The steady increase in acc makes me think there wont be too much of a problem of overfitting, so I expect the test accuracy to also be high.
+
